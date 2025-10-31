@@ -1,0 +1,53 @@
+# Klassificér som 1 hvis sandsynlighed > 0.5, ellers 0
+pred_class <- ifelse(pred > 0.5, 1, 0)
+
+# 3. Lav confusion matrix
+table(Predicted = pred_class, Actual = df_clean_opg_3_1$Target)
+#True Negative (TN) = 13 → modellen gættede korrekt “0” (fald i handel)
+
+#False Negative (FN) = 8 → modellen sagde “0”, men det var faktisk “1”
+
+#False Positive (FP) = 30 → modellen sagde “1”, men det var faktisk “0”
+
+#True Positive (TP) = 47 → modellen gættede korrekt “1” (stigning i handel)
+
+accuracy <- (13 + 47) / (13 + 8 + 30 + 47) # samlet andel korrekte (~0.61)
+accuracy
+sensitivity <- 47 / (47 + 8)                # andel korrekt fundne stigninger (~0.85)
+specificity <- 13 / (13 + 30)               # andel korrekt fundne fald (~0.30)
+
+accuracy; sensitivity; specificity
+
+#ROC
+
+# ROC-kurve og AUC (Area Under Curve)
+install.packages("pROC")
+library(pROC)
+
+# sandsynligheder fra modellen
+pred_probs <- predict(model_opg_3_1, type = "response")
+
+# ROC-objekt
+roc_obj <- roc(df_clean_opg_3_1$Target, pred_probs)
+
+# plot 
+plot(roc_obj, col = "blue", lwd = 2, main = "ROC-kurve for model baseret på Forbrugertillid")
+abline(a = 0, b = 1, lty = 2, col = "gray")  # diagonal reference-linje
+
+# AUC (mål for modellens præcision)
+auc(roc_obj)
+
+
+#Area under the curve: 0.5748
+
+#0.5 = tilfældig gætning
+
+#0.7–0.8 = god model
+
+#0.8–0.9 = meget god model
+
+#ROC-kurven viser, hvor godt modellen kan adskille perioder med stigende vs. faldende julehandel.
+
+#AUC (Area Under Curve) = 0.57 betyder, at modellen kun lige akkurat er bedre end tilfældig gætning (0.5).
+
+#Med andre ord har den begrænset præcision, men fanger stadig nogle mønstre i data.
