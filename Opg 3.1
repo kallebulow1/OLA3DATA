@@ -1,0 +1,51 @@
+#3.1
+
+# data klar
+Forbrugertillids_opg_3 <- data.frame(Kvartal = final_df$Kvartal[1:102],
+                                     Forbrugertillid_DST = final_df$dst_ft[1:102])
+
+
+Privatforbrug_opg_3 <- data.frame(Kvartal = final_df$Kvartal[1:102],
+                                  Privatforbrug = final_df$vkstp_pct[1:102])
+
+#merge
+df_opg_3_1 <- merge(Forbrugertillids_opg_3, Privatforbrug_opg_3, by = "Kvartal")
+
+#Målvariabel
+
+# Opretter target: 1 hvis forbrug > året før (4 kvartaler tilbage), ellers 0
+
+df_opg_3_1 <- df_opg_3_1 %>%
+  mutate(Target = ifelse(Privatforbrug > lag(Privatforbrug, 4), 1, 0)) # # lag(…,4) sammenligner med samme kvartal året før
+#ifelse viser årlig vækst (kvartal mod samme kvartal sidste år)
+
+
+df_clean_opg_3_1 <- na.omit(df_opg_3_1)  # fjerner rækker med NA
+
+
+#lavet en logistisk regression, hvor modellen prøver at forudsige sandsynligheden for, at:
+#julehandlen (privatforbrug) bliver større end året før ud fra forbrugertilliden (DST).
+
+model_opg_3_1 <- glm(Target ~ Forbrugertillid_DST, data = df_clean_opg_3_1, family = binomial)
+summary(model_opg_3_1)
+
+#DST k3
+
+DST_2025k3 <- data.frame(Forbrugertillid_DST = -17.2)
+
+#forudsigelsen
+
+forudsigelse_opg_3_1 <- predict(model_opg_3_1, newdata = DST_2025k3, type = "response") ## beregner sandsynligheden for at julehandlen stiger
+forudsigelse_opg_3_1  # viser sandsynligheden for at julehandlen stiger
+#modellen vurderer 35,3 % sandsynlighed for, at julehandlen i 2025 bliver større end i 2024.
+
+
+#If else
+if (forudsigelse_opg_3_1 > 0.5) {
+  print("Modellen forudsiger, at julehandlen i 2025 bliver STØRRE end i 2024.")
+} else {
+  print("Modellen forudsiger, at julehandlen i 2025 bliver MINDRE end i 2024.")
+}
+
+# forudsigelser på hele datasættet (træningsdata)
+pred <- predict(model_opg_3_1, type = "response")
