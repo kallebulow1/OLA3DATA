@@ -1,0 +1,25 @@
+#Alle 12 spørgsmål
+pcr.fit1 <- pcr(Forbrug ~
+                 fam_i_dag +
+                 fam_om_år +
+                 dan_idag + 
+                 dan_om_år +
+                ansk_fordelag +
+                  priser_idag +
+                  priser_om_år +
+                arbejdsløshed + 
+                  ansk_12 +
+                  fornruftig_sparer_op+
+                  sparer_op +
+                fam_spare,
+               data = Alle_12_spørgsmål_kvt1 , scale = TRUE , 
+               validation = "CV")
+summary(pcr.fit1)
+loadings.pcr.fit1 <- pcr.fit1$loadings
+w.indicators.3 <- loadings.pcr.fit1[1:12]^2
+sum(w.indicators.3)
+print(loadings.pcr.fit1)
+
+print(loadings.pcr.fit1)
+#plot
+validationplot(pcr.fit1, val.type = "MSEP")
