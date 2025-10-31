@@ -1,0 +1,24 @@
+
+
+library(pls)
+
+#Udvælg kvartaler
+forbrug_2024Q3 <- subset(Alle_12_spørgsmål_kvt, Kvartal == "X2024K3")
+forbrug_2025Q3 <- subset(Alle_12_spørgsmål_kvt, Kvartal == "X2025K3")
+
+#Fjern kolonner der ikke bruges til prediction
+cols <- setdiff(names(pcr.fit1$model)[-1], c("Kvartal", "Forbrug"))
+forbrug_2024Q3 <- forbrug_2024Q3[, cols]
+forbrug_2025Q3 <- forbrug_2025Q3[, cols]
+
+#Erstat evt. manglende værdier med 0
+forbrug_2024Q3[is.na(forbrug_2024Q3)] <- 0
+forbrug_2025Q3[is.na(forbrug_2025Q3)] <- 0
+
+#Forudsig forbrug for hvert kvartal
+pred_2024Q3 <- predict(pcr.fit1, newdata = forbrug_2024Q3, ncomp = 3)
+pred_2025Q3 <- predict(pcr.fit1, newdata = forbrug_2025Q3, ncomp = 3)
+
+#Beregn årlig realvækst i %
+realvaekst_2025 <- ((pred_2025Q3 - pred_2024Q3) / abs(pred_2024Q3)) * 100
+realvaekst_2025
