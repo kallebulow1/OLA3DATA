@@ -1,0 +1,51 @@
+# ============================================================
+# Opgave 1.4 – Forudsigelser 2025K3/K4 med indikatorerne
+# ============================================================
+# Forudsætning: forv_q_fixed indeholder 2025K3 og (helst) første måned i 2025K4 aggregeret
+pred_quarters <- c("2025K3","2025K4")
+pred_basis <- forv_q_fixed %>% dplyr::filter(Dato %in% pred_quarters)
+
+# Konstruér best_ind for pred (gennemsnit af best_cols)
+pred_best_ind <- rowMeans(pred_basis[, best_cols, drop = FALSE], na.rm = TRUE)
+
+# Fit modeller på sample (cmp_df) og forudsig på pred_basis
+ pred_best_combo <- data.frame(
+  Dato = pred_basis$Dato,
+  as.data.frame(predict(mod_best_combo,
+                        newdata = data.frame(best_ind = pred_best_ind),
+                        interval = "prediction"))
+) %>% dplyr::rename(fit_P31_yoy = fit) %>%
+  dplyr::mutate(model = "BEDSTE kombination")
+
+pred_DST <- data.frame(
+  Dato = pred_basis$Dato,
+  as.data.frame(predict(mod_DST_cmp,
+                        newdata = pred_basis,
+                        interval = "prediction"))
+) %>% dplyr::rename(fit_P31_yoy = fit) %>%
+  dplyr::mutate(model = "DST (FTI)")
+
+pred_DI <- data.frame(
+  Dato = pred_basis$Dato,
+  as.data.frame(predict(mod_DI_cmp,
+                        newdata = pred_basis,
+                        interval = "prediction"))
+) %>% dplyr::rename(fit_P31_yoy = fit) %>%
+  dplyr::mutate(model = "DI_FTI")
+
+pred_bedste <- data.frame(
+  Dato = cmp_df$Dato,
+  as.data.frame(predict(mod_bedste,
+                        newdata = cmp_df,
+                        interval = "prediction"))
+) %>% dplyr::rename(fit_P31_yoy = fit) %>%
+  dplyr::mutate(model = "‘Bedste indikator’")
+
+pred_all <- dplyr::bind_rows(pred_best_combo, pred_DST, pred_DI, pred_bedste) %>%
+  dplyr::arrange(Dato, model)
+
+cat("\n=== Opgave 1.4 – Prognoser (YoY, %) for 2025K3/K4 ===\n")
+# Vis kun prognoser for 2025K3 og 2025K4
+pred_all %>%
+  dplyr::filter(Dato %in% c("2025K3", "2025K4")) %>%
+  print(row.names = FALSE)
