@@ -1,0 +1,40 @@
+# ============================================================
+# Opgave 1.5 – Mikroindikator (kun mikro-spørgsmål)
+# ============================================================
+names(X_all)
+micro_cols <- c(
+  "Familiens.økonomiske.situation.i.dag..sammenlignet.med.for.et.år.siden",
+  "Familiens.økonomiske.situation.om.et.år..sammenlignet.med.i.dag",
+  "Anskaffelse.af.større.forbrugsgoder..fordelagtigt.for.øjeblikket",
+  "Anskaffelse.af.større.forbrugsgoder..inden.for.de.næste.12.mdr.",
+  "Regner.med.at.kunne.spare.op.i.de.kommende.12.måneder",
+  "Familiens.økonomiske.situation.lige.nu..kan.spare.penge.slår.til..bruger.mere.end.man.tjener"
+)
+stopifnot(length(setdiff(micro_cols, names(X_all))) == 0)
+
+X_micro <- X_all[, micro_cols, drop = FALSE]
+
+k_vec_micro <- 1:ncol(X_micro)
+res_micro <- lapply(k_vec_micro, function(k){
+  combs <- combn(ncol(X_micro), k, simplify = FALSE)
+  do.call(rbind, lapply(combs, function(idx){
+    eval_combo(X_micro, y_all, idx)
+  }))
+}) %>% do.call(rbind, .) %>% dplyr::arrange(dplyr::desc(R2))
+
+best_micro <- res_micro[1, ]
+cat("\n=== Opgave 1.5 – Top 10 mikro (alle k) ===\n")
+print(head(res_micro, 10), row.names = FALSE)
+
+# Sammenlign mikro-bedste med øvrige på samme sample
+best_micro_cols <- unlist(strsplit(best_micro$combo, " \\| "))
+micro_ind <- rowMeans(cmp_df[, best_micro_cols, drop = FALSE], na.rm = TRUE)
+mod_micro <- lm(cmp_df$P31_yoy ~ micro_ind)
+
+R2_cmp_micro <- rbind(
+  R2_table,
+  data.frame(Model = "Mikro – bedste kombination", R2 = summary(mod_micro)$r.squared)
+) %>% dplyr::arrange(dplyr::desc(R2))
+
+cat("\n=== Opgave 1.5 – R²-sammenligning inkl. mikro ===\n")
+print(R2_cmp_micro, row.names = FALSE)
