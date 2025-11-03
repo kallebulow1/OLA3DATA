@@ -1,0 +1,38 @@
+# ============================================================
+# Opgave 4.1 – Stabilitetstest (expanding window)
+# ============================================================
+calc_r2_expanding <- function(x, y, min_win = 32){
+  out <- rep(NA_real_, length(y))
+  for (j in seq.int(min_win, length(y))) {
+    ok <- is.finite(x[1:j]) & is.finite(y[1:j])
+    if (sum(ok) >= 8) out[j] <- summary(lm(y[1:j][ok] ~ x[1:j][ok]))$r.squared
+  }
+  out
+}
+
+# Stabilitet for: BEDSTE kombi, DST, DI, ‘Bedste indikator’, Mikro-bedste
+series_list <- list(
+  DST_FTI                = df_q_aligned_OLA3$Forbrugertillidsindikatoren,
+  DI_FTI                 = df_q_aligned_OLA3$DI_FTI,
+  BEDSTE_INDIKATOR       = cmp_df$samlet_indikator,
+  MIKRO_BEDSTE_INDIKATOR = micro_ind,
+  MCCI                   = df_q_aligned$MCCI_Indikator
+)
+
+stab_table <- lapply(names(series_list), function(nm){
+  r2_path <- calc_r2_expanding(series_list[[nm]], cmp_df$P31_yoy, min_win = 32)
+  data.frame(
+    Indikator = nm,
+    R2_nu  = tail(na.omit(r2_path), 1),
+    R2_gns = mean(r2_path, na.rm = TRUE),
+    R2_sd  = sd(r2_path,   na.rm = TRUE),
+    stringsAsFactors = FALSE
+  )
+}) %>% dplyr::bind_rows() %>% dplyr::arrange(dplyr::desc(R2_nu))
+
+#afrunder med 2
+stab_table <- stab_table %>%
+  mutate(across(where(is.numeric), ~ round(.x, 2)))
+
+cat("\n=== Opgave 4.1 – Stabilitet (expanding window, min_win=32) ===\n")
+print(stab_table, row.names = FALSE,)
