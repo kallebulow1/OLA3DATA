@@ -1,1 +1,241 @@
+library(dplyr)
+library(stringr)
+library(readr)
+library(readxl)
+library(httr)
+library(ggplot2)
+library(zoo)
+
+
+forv <- read_excel("data/forv1.xlsx")
+forbrug <- read_excel("data/forbrug.xlsx")
+
+
+# --- antag at dit datasæt hedder fx df ---
+# df <- read.csv("forbrug.csv")   # eller hvad din fil hedder
+
+# --- Lav kvartalsvariabel ud fra "måned" ---
+forv <- forv %>%
+  mutate(
+    # konverter f.eks. "2000M01" → år = 2000, måned = 1
+    year = as.numeric(str_sub(måned, 1, 4)),
+    month = as.numeric(str_sub(måned, 6, 7)),
+    quarter = paste0(year, "K", ceiling(month / 3))
+  )
+
+# --- Gruppér på kvartal og beregn gennemsnit pr. kvartal ---
+forv_kvartal <- forv %>%
+  group_by(quarter) %>%
+  summarise(across(-måned, ~ mean(.x, na.rm = TRUE), .names = "{.col}"))
+
+# --- (valgfrit) Sortér korrekt efter tid ---
+forv_kvartal <- forv_kvartal %>%
+  arrange(as.yearqtr(quarter, format = "%YQ%q"))
+
+# --- Se resultatet ---
+head(forv_kvartal)
+
+
+# antag at dit datasæt hedder fx forv_kvartal
+forv_kvartal <- forv_kvartal %>%
+  select(-year, -month)
+
+
+
+# 1) Gør kvartal sortérbart
+forbrug2 <- forbrug %>%
+  mutate(kvartal = as.yearqtr(kvartal, format = "%YK%q"))
+
+# 2) Omdøb kolonnen og sørg for numerisk type
+forbrug2 <- forbrug2 %>%
+  rename(privatforbrug_mia_kr = `privatforbrug mia. kr`) %>%
+  mutate(
+    # hvis den allerede er numerisk, gør næste linje ikke noget;
+    # hvis den er tekst, bliver den konverteret.
+    privatforbrug_mia_kr = as.numeric(gsub(",", ".", as.character(privatforbrug_mia_kr)))
+    # Alternativ med readr (hvis fx tusindtalsseparatorer):
+    # privatforbrug_mia_kr = readr::parse_number(privatforbrug_mia_kr, 
+    #                         locale = readr::locale(decimal_mark = ","))
+  )
+
+# 3) Beregn vækst (QoQ og YoY) i en ny dataframe
+forbrug_vækst <- forbrug2 %>%
+  arrange(kvartal) %>%
+  mutate(
+    
+    realvaekst_yoy_pct = 100 * (privatforbrug_mia_kr / lag(privatforbrug_mia_kr, 4) - 1)
+  )
+
+head(forbrug_vækst, 10)
+# antag at din dataframe hedder forbrug_vaekst
+forbrug_vækst <- forbrug_vækst[-c(1:4), ]
+
+forv$`Anser det som fornuftigt at spare op i den nuværende økonomiske situation` <-
+  as.numeric(as.character(forv$`Anser det som fornuftigt at spare op i den nuværende økonomiske situation`))
+
+str(forv$`Anser det som fornuftigt at spare op i den nuværende økonomiske situation`)
+
+
+
+# Omdøb kolonnenavne her, så de præcist matcher dine faktiske navne i datasættet
+forv_kvartal <- forv_kvartal %>%
+  mutate(
+    DI_indikator = rowMeans(select(., 
+                                   `Familiens økonomiske situation i dag, sammenlignet med for et år siden`,
+                                   `Danmarks økonomiske situation i dag, sammenlignet med for et år siden`,
+                                   `Anskaffelse af større forbrugsgoder, fordelagtigt for øjeblikket`,
+                                   `Anskaffelse af større forbrugsgoder, inden for de næste 12 mdr.`  
+    ), na.rm = TRUE)
+  )
+
+
+
+forv_kvartal <- forv_kvartal %>%
+  rename(kvartal = quarter)
+
+
+forv_kvartal <- forv_kvartal %>%
+  mutate(kvartal = as.yearqtr(kvartal, format = "%YK%q"))
+
+forbrug_vækst <- forbrug_vækst %>%
+  mutate(kvartal = as.yearqtr(kvartal, format = "%Y Q%q"))
+
+data_joined <- inner_join(forv_kvartal, forbrug_vækst, by = "kvartal")
+
+# Korrelation mellem DI og real vækst i forbrug
+correlation_DI <- cor(data_joined$DI_indikator, data_joined$realvaekst_yoy_pct, use = "complete.obs")
+
+# Lineær model
+model_DI <- lm(realvaekst_yoy_pct ~ DI_indikator, data = data_joined)
+
+# R² fra modellen
+r2_DI <- summary(model)$r.squared
+
+# Udskriv resultater
+cat("Korrelation:", round(correlation, 3), "\n")
+cat("R²-værdi:", round(r2, 3), "\n")
+
+# Spørgsmål i DI's indikator
+spm_DI <- c(
+  "Familiens økonomiske situation i dag, sammenlignet med for et år siden",
+  "Danmarks økonomiske situation i dag, sammenlignet med for et år siden",
+  "Anskaffelse af større forbrugsgoder, fordelagtigt for øjeblikket",
+  "Anskaffelse af større forbrugsgoder, inden for de næste 12 mdr."
+)
+
+# Udskriv flot i konsollen
+cat("Resultater for DI-indikatoren\n",
+    "──────────────────────────────────────────────\n",
+    sprintf("Forklaringsgrad R²: %.3f\n\n", r2_DI),
+    sprintf("Korrelation:        %.3f\n", correlation_DI),
+    
+    "Spørgsmål i indikatoren:\n",
+    paste0(sprintf("%2d. %s", seq_along(spm_DI), spm_DI), collapse = "\n")
+    
+)
+
+
+ggplot(data_joined, aes(x = DI_indikator, y = realvaekst_yoy_pct)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +
+  labs(
+    title = "DI-indikator vs. realvækst i privatforbrug",
+    x = "DI-indikator (gennemsnit af 4 spørgsmål)",
+    y = "Realvækst i privatforbrug (år/år, pct.)"
+  ) +
+  theme_minimal()
+
+
+
+
+
+# 3) Korrelation mellem Forbrugertillidsindikatoren og realvækst (YoY)
+kor_FTI <- cor(data_joined$Forbrugertillidsindikatoren, data_joined$realvaekst_yoy_pct, use = "complete.obs")
+
+# 4) Simpel OLS: realvækst ~ Forbrugertillidsindikatoren
+model_FTI <- lm(realvaekst_yoy_pct ~ Forbrugertillidsindikatoren, data = data_joined)
+r2_FTI  <- summary(model_FTI)$r.squared
+
+cat("Korrelation:", round(kor_FTI, 3), "\n")
+cat("R²:", round(r2_FTI, 3), "\n")
+# valgfrit: se p-værdi og koefficienter
+summary(model_FTI)
+
+
+library(purrr)
+
+
+# 1. De 12 præcise spørgsmål
+spm <- c(
+  "Familiens økonomiske situation i dag, sammenlignet med for et år siden",
+  "Familiens økonomiske  situation om et år, sammenlignet med i dag",
+  "Danmarks økonomiske situation i dag, sammenlignet med for et år siden",
+  "Danmarks økonomiske situation om et år, sammenlignet med i dag",
+  "Anskaffelse af større forbrugsgoder, fordelagtigt for øjeblikket",
+  "Priser i dag, sammenlignet med for et år siden",
+  "Priser om et år, sammenlignet med i dag",
+  "Arbejdsløsheden om et år, sammenlignet med i dag",
+  "Anskaffelse af større forbrugsgoder, inden for de næste 12 mdr.",
+  "Anser det som fornuftigt at spare op i den nuværende økonomiske situation",
+  "Regner med at kunne spare op i de kommende 12 måneder",
+  "Familiens økonomiske situation lige nu: kan spare/penge slår til/ bruger mere end man tjener"
+)
+
+# 2. Lav alle kombinationer (fra 1 til 12 spørgsmål)
+kombinationer <- unlist(lapply(1:length(spm), function(i) combn(spm, i, simplify = FALSE)), recursive = FALSE)
+# Print antal kombinationer
+cat("Antal kombinationer:", length(kombinationer), "\n")
+
+# 3. Funktion til at beregne korrelation og R²
+beregn_kombi <- function(cols) {
+  indikator <- rowMeans(data_joined[, cols], na.rm = TRUE)
+  y <- data_joined$realvaekst_yoy_pct
+  
+  ok <- complete.cases(indikator, y)
+  indikator <- indikator[ok]
+  y <- y[ok]
+  
+  if (length(indikator) > 1) {
+    kor <- cor(indikator, y)
+    r2 <- summary(lm(y ~ indikator))$r.squared
+  } else {
+    kor <- NA
+    r2 <- NA
+  }
+  
+  data.frame(
+    kombination = paste(cols, collapse = " + "),
+    antal_spm = length(cols),
+    korrelation = kor,
+    R2 = r2
+  )
+}
+
+# 4. Beregn for alle kombinationer
+resultat <- map_dfr(kombinationer, beregn_kombi)
+
+# 5. Sortér og vis top 10
+resultat <- arrange(resultat, desc(R2))
+head(resultat, 10)
+# Find og udskriv den bedste indikator i ét skridt
+cat("Den bedste indikator består af følgende spørgsmål:\n\n",
+    paste0(
+      sprintf("%2d. %s", seq_along(unlist(strsplit(resultat$kombination[which.max(resultat$R2)], " \\+ "))),
+              unlist(strsplit(resultat$kombination[which.max(resultat$R2)], " \\+ "))),
+      collapse = "\n"
+    ),
+    "\n\nAntal spørgsmål i indikatoren:", 
+    length(unlist(strsplit(resultat$kombination[which.max(resultat$R2)], " \\+ "))),
+    "\nR²-værdi:", round(max(resultat$R2, na.rm = TRUE), 3),
+    "\nKorrelation:", round(resultat$korrelation[which.max(resultat$R2)], 3),
+    "\n"
+)
+
+
+
+years <- (nrow(indikatorer)-32):nrow(indikatorer)
+lm.forbrug.ftillid.all <- rep(list(rep(list(rep(list())),length(years))),ncol(indikatorer))
+lm.forbrug.ftillid.all.r2 <- matrix(0, nrow = length(years), ncol = ncol(indikatorer))
+
+
 
